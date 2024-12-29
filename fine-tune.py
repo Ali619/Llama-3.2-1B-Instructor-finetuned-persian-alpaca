@@ -43,13 +43,14 @@ model.config.pretraining_tp = 1
 def process_batch(batch):
     data_df = pd.DataFrame(batch)
     data_df["text"] = data_df[["instruction", "input", "output"]].apply(
-        lambda x: "<|im_start|>user\n"
+        lambda x: "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
         + x["instruction"]
         + ":\n"
         + x["input"]
-        + "<|im_end|>\n<|im_start|>assistant\n"
+        + "<|eot_id|>\n"
+        + "<|start_header_id|>assistant<|end_header_id|>"
         + x["output"]
-        + "<|im_end|>\n",
+        + "<|eot_id|>",
         axis=1,
     )
     return Dataset.from_pandas(data_df[["text"]])
