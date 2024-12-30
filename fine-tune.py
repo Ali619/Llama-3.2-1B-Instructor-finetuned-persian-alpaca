@@ -1,40 +1,44 @@
 import os
 
-import pandas as pd
 import torch
-from datasets import Dataset, concatenate_datasets, load_dataset
-from dotenv import load_dotenv
+from datasets import load_dataset
 from peft import LoraConfig
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-    Trainer,
-    TrainingArguments,
-)
-from trl import SFTConfig, SFTTrainer
-
-load_dotenv()
+from transformers import TrainingArguments
+from trl import SFTTrainer
+from unsloth import FastLanguageModel, is_bfloat16_supported
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model_id = "meta-llama/Llama-3.2-1B-Instruct"
+model_id = "unsloth/Llama-3.2-1B-Instruct-bnb-4bit"
 
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-tokenizer.pad_token = tokenizer.eos_token
+MAX_LENGTH = 2048
 
-bnb_config = BitsAndBytesConfig(
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name=model_id,
+    max_seq_length=MAX_LENGTH,
     load_in_4bit=True,
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_use_double_quant=True,
+    dtype=None,
 )
-
-model = AutoModelForCausalLM.from_pretrained(
-    model_id, quantization_config=bnb_config, device_map="auto"
+tokenizer.pad_token = tokenizer.eos_token
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=16,
+    lora_alpha=16,
+    lora_dropout=0,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "up_proj",
+        "down_proj",
+        "o_proj",
+        "gate_proj",
+    ],
+    use_rslora=True,
+    use_gradient_checkpointing="unsloth",
+    random_state=42,
+    loftq_config=None,
 )
-# model.gradient_checkpointing_enable()
-model.config.use_cache = False
-model.config.pretraining_tp = 1
+print(model.print_trainable_parameters())
 
 
 def prepreprocess_batch(batch):
@@ -55,7 +59,9 @@ def prepreprocess_batch(batch):
 
 
 data = load_dataset("mshojaei77/merged_persian_alpaca", split="train")
-processed_data = data.map(prepreprocess_batch, batched=True, num_proc=os.cpu_count())
+processed_data = data.map(
+    prepreprocess_batch, batched=True, batch_size=5000, num_proc=os.cpu_count()
+)
 del data
 
 peft_config = LoraConfig(
@@ -79,18 +85,19 @@ peft_config = LoraConfig(
 OUTPUT_DIR = "./output/Llama-3-2-1B-Instructor-finetuned-persian-alpaca"
 HF_MODEL_NAME = "ali619/Llama-3.2-1B-Instruct-finetune-persian-alpaca"
 STEP = 100
-MAX_LENGTH = 2048
-
+BATCH_SIZE = 16
 training_arguments = TrainingArguments(
     output_dir=OUTPUT_DIR,
-    num_train_epochs=0.5,
-    per_device_train_batch_size=2,
-    gradient_accumulation_steps=int(STEP / 10),
+    num_train_epochs=1,
+    per_device_train_batch_size=BATCH_SIZE,
+    gradient_accumulation_steps=int(32 / BATCH_SIZE),
     optim="adamw_bnb_8bit",
     learning_rate=2e-3,
     lr_scheduler_type="cosine",
     weight_decay=0.01,
-    bf16=True,
+    warmup_steps=STEP,
+    fp16=not is_bfloat16_supported(),
+    bf16=is_bfloat16_supported(),
     logging_steps=STEP,
     save_steps=STEP,
     save_strategy="steps",
@@ -112,6 +119,7 @@ trainer = SFTTrainer(
     tokenizer=tokenizer,
     args=training_arguments,
     max_seq_length=MAX_LENGTH,
+    packing=False,
 )
 
 trainer.train()
