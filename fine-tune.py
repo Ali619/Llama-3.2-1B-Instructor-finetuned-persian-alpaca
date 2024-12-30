@@ -1,10 +1,7 @@
 import os
-from multiprocessing import Pool
 
-import datasets
 import pandas as pd
 import torch
-import wandb
 from datasets import Dataset, concatenate_datasets, load_dataset
 from dotenv import load_dotenv
 from peft import LoraConfig
@@ -40,39 +37,32 @@ model.config.use_cache = False
 model.config.pretraining_tp = 1
 
 
-def process_batch(batch):
-    data_df = pd.DataFrame(batch)
-    data_df["text"] = data_df[["instruction", "input", "output"]].apply(
-        lambda x: "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
-        + x["instruction"]
+def prepreprocess_batch(batch):
+    text = [
+        "<|begin_of_text|><|start_header_id|>user<|end_header_id|>"
+        + instruct
         + ":\n"
-        + x["input"]
+        + _input
         + "<|eot_id|>\n"
         + "<|start_header_id|>assistant<|end_header_id|>"
-        + x["output"]
-        + "<|eot_id|>",
-        axis=1,
-    )
-    return Dataset.from_pandas(data_df[["text"]])
-
-
-def prepare_train_data(data, batch_size=50000) -> Dataset:
-    batches = [data[i : i + batch_size] for i in range(0, len(data), batch_size)]
-
-    with Pool(processes=10) as pool:
-        processed_datasets = pool.map(process_batch, batches)
-
-    return datasets.concatenate_datasets(processed_datasets)
+        + output
+        + "<|eot_id|>"
+        for instruct, _input, output in zip(
+            batch["instruction"], batch["input"], batch["output"]
+        )
+    ]
+    return {"text": text}
 
 
 data = load_dataset("mshojaei77/merged_persian_alpaca", split="train")
-processed_data = prepare_train_data(data)
+processed_data = data.map(prepreprocess_batch, batched=True, num_proc=os.cpu_count())
 del data
 
 peft_config = LoraConfig(
     r=16,
     lora_alpha=16,
     lora_dropout=0.05,
+    use_rslora=True,
     bias="none",
     task_type="CAUSAL_LM",
     target_modules=[
@@ -85,34 +75,30 @@ peft_config = LoraConfig(
         "down_proj",
     ],
 )
-WB_ENTITY = os.getenv("WB_ENTITY")
-wandb.init(
-    entity=WB_ENTITY,
-    project="Llama-3-2-1B-Instructor-finetuned-persian-alpaca",
-    resume="auto",
-)
 
 OUTPUT_DIR = "./output/Llama-3-2-1B-Instructor-finetuned-persian-alpaca"
 HF_MODEL_NAME = "ali619/Llama-3.2-1B-Instruct-finetune-persian-alpaca"
 STEP = 100
+MAX_LENGTH = 2048
 
 training_arguments = TrainingArguments(
     output_dir=OUTPUT_DIR,
     num_train_epochs=0.5,
     per_device_train_batch_size=2,
-    gradient_accumulation_steps=8,
+    gradient_accumulation_steps=int(STEP / 10),
     optim="adamw_bnb_8bit",
     learning_rate=2e-3,
     lr_scheduler_type="cosine",
     weight_decay=0.01,
     bf16=True,
     logging_steps=STEP,
-    save_steps=100,
+    save_steps=STEP,
     save_strategy="steps",
     save_total_limit=2,
     hub_strategy="checkpoint",
-    report_to=["wandb", "tensorboard"],
+    report_to=["tensorboard"],
     dataloader_pin_memory=True,
+    dataloader_num_workers=4,
     hub_model_id=HF_MODEL_NAME,
     push_to_hub=True,
     seed=42,
@@ -125,7 +111,7 @@ trainer = SFTTrainer(
     dataset_text_field="text",
     tokenizer=tokenizer,
     args=training_arguments,
-    max_seq_length=2048,
+    max_seq_length=MAX_LENGTH,
 )
 
-trainer.train(resume_from_checkpoint=True)
+trainer.train()
