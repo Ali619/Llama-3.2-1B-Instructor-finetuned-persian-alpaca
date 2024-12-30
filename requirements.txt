@@ -1,0 +1,8 @@
+accelerate==0.34.2
+datasets==3.0.1
+peft==0.13.0
+torch==2.5.1
+transformers==4.47.1
+trl==0.11.1
+wandb==0.19.1
+unsloth==2024.12.12
