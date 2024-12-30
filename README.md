@@ -24,7 +24,7 @@ bf16=is_bfloat16_supported() # True
 
 1. Install `requirements.txt`:
 ```
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 > **Note:** You have to install *cuda* and other dependencies to run this script on GPU, otherwise it would be too slow to finish.
 
