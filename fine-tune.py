@@ -1,5 +1,3 @@
-import os
-
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
@@ -59,9 +57,7 @@ def prepreprocess_batch(batch):
 
 
 data = load_dataset("mshojaei77/merged_persian_alpaca", split="train")
-processed_data = data.map(
-    prepreprocess_batch, batched=True, batch_size=5000, num_proc=os.cpu_count()
-)
+processed_data = data.map(prepreprocess_batch, batched=True)
 del data
 
 peft_config = LoraConfig(
@@ -85,12 +81,12 @@ peft_config = LoraConfig(
 OUTPUT_DIR = "./output/Llama-3-2-1B-Instructor-finetuned-persian-alpaca"
 HF_MODEL_NAME = "ali619/Llama-3.2-1B-Instruct-finetune-persian-alpaca"
 STEP = 100
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 training_arguments = TrainingArguments(
     output_dir=OUTPUT_DIR,
     num_train_epochs=1,
     per_device_train_batch_size=BATCH_SIZE,
-    gradient_accumulation_steps=int(32 / BATCH_SIZE),
+    gradient_accumulation_steps=int(16 / BATCH_SIZE),
     optim="adamw_bnb_8bit",
     learning_rate=2e-3,
     lr_scheduler_type="cosine",
@@ -119,7 +115,7 @@ trainer = SFTTrainer(
     tokenizer=tokenizer,
     args=training_arguments,
     max_seq_length=MAX_LENGTH,
-    packing=False,
+    packing=False,  # when using `unsloth`, can make training 5x faster for short sequences
 )
 
 trainer.train()
