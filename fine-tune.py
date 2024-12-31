@@ -81,14 +81,14 @@ peft_config = LoraConfig(
 OUTPUT_DIR = "./output/Llama-3-2-1B-Instructor-finetuned-persian-alpaca"
 HF_MODEL_NAME = "ali619/Llama-3.2-1B-Instruct-finetune-persian-alpaca"
 STEP = 100
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 training_arguments = TrainingArguments(
     output_dir=OUTPUT_DIR,
     num_train_epochs=1,
     per_device_train_batch_size=BATCH_SIZE,
-    gradient_accumulation_steps=int(16 / BATCH_SIZE),
+    gradient_accumulation_steps=2,
     optim="adamw_bnb_8bit",
-    learning_rate=2e-3,
+    learning_rate=2e-4,
     lr_scheduler_type="cosine",
     weight_decay=0.01,
     warmup_steps=STEP,
@@ -115,7 +115,7 @@ trainer = SFTTrainer(
     tokenizer=tokenizer,
     args=training_arguments,
     max_seq_length=MAX_LENGTH,
-    packing=False,  # when using `unsloth`, can make training 5x faster for short sequences
+    packing=True,  # can make training 5x faster for short sequences
 )
 
 trainer.train()
