@@ -1,6 +1,9 @@
-### Fine-Tune Llama 3.2-1B with only 3 GiB of gpu memory and batch_size=8
+### Fine-Tune Llama 3.2-1B with only 8 GiB of gpu memory and batch_size=32
 
-[*unsloth*](https://github.com/unslothai/unsloth) will reduce a large amount of VRAM usage and also speedup training even on low-rank consumer GPU devices. I'm using a **Nvidia RTX-3060** with *12 GB* VRAM to fine-tune this model and just used **2.5 GB of VRAM** with `batch siez=8` per device. You can see all the hyperparameters below:
+[*unsloth*](https://github.com/unslothai/unsloth) will reduce a large amount of VRAM usage and also speedup training even on low-rank consumer GPU devices. I'm using a **Nvidia RTX-3060** with *12 GB* VRAM to fine-tune this model and just used **8 GB of VRAM** with `batch siez=32` **per device**. You can see all the hyperparameters below:
+
+
+![plot](./pics/pic.jpg)
 
 ```python 
 from transformers import TrainingArguments
